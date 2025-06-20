@@ -1,2 +1,2 @@
-# GamePlay
-A general Dueling Double DQN Framework for Atari Environments with dense reward feedback
+# Tetris.AI
+A Reinforcement Learning Project to optimize DuelingDQNs for Tetris under the ALE-Tetris-v5 environment
