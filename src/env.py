@@ -36,6 +36,7 @@ class GameEnv():
 
         self.set_seed(seed)
         
+        self.id = env_id
         self.env = gym.vector.AsyncVectorEnv(
             [lambda: self._make_env(env_id=env_id) for i in range(num_envs)], 
             autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP
@@ -170,7 +171,6 @@ class GameEnv():
                     self.best_reward = recent_reward_avg
                     best_model_path = os.path.join(path, "best_model.pth")
                     self.agent.save_weights(best_model_path)
-                    self.test(os.path.join(path, "video"), num_episodes=1)
 
                     if self.verbose:
                         logger.info(f"New best model saved! Average reward: {recent_reward_avg:.2f}")
@@ -197,28 +197,7 @@ class GameEnv():
         import cv2
         os.makedirs(path, exist_ok=True)
 
-        action_labels = {
-            0: "NOOP",
-            1: "FIRE",
-            2: "UP",
-            3: "RIGHT",
-            4: "LEFT",
-            5: "DOWN",
-            6: "UPRIGHT",
-            7: "UPLEFT",
-            8: "DOWNRIGHT",
-            9: "DOWNLEFT",
-            10: "UPFIRE",
-            11: "RIGHTFIRE",
-            12: "LEFTFIRE",
-            13: "DOWNFIRE",
-            14: "UPRIGHTFIRE",
-            15: "UPLEFTFIRE",
-            16: "DOWNRIGHTFIRE",
-            17: "DOWNLEFTFIRE"
-        }
-
-        env = self._make_env(render_mode="rgb_array")
+        env = self._make_env(self.id, render_mode="rgb_array")
         self.agent.model.eval()
 
         state, _ = env.reset()
@@ -242,19 +221,6 @@ class GameEnv():
                 frame = env.render()
 
                 action = self.agent.select_action(state, 0.0)
-                action_str = action_labels.get(int(action), f"UNKNOWN({action})")
-
-                text = f"Action: {action_str}"
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                font_scale = max(0.5, width / 640 * 0.6)
-                thickness = max(1, int(width / 320))
-                color = (0, 0, 255)
-
-                text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
-                text_x = width - text_size[0] - 10
-                text_y = height - 10
-
-                cv2.putText(frame, text, (text_x, text_y), font, font_scale, color, thickness, cv2.LINE_AA)
                 video.write(frame)
 
                 state, reward, terminated, truncated, _ = env.step(action)
