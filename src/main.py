@@ -1,35 +1,109 @@
-from src.env import GameEnv
 import argparse
+from src.env import GameEnv
+from src.gui import PongGUI, InvadersGUI, BreakoutGUI
 
 MAPPING = {
-    "pong": "ALE/Pong-v5", 
+    "pong": "ALE/Pong-v5",
     "breakout": "ALE/Breakout-v5",
-    "invaders": "ALE/SpaceInvaders-v5"
+    "invaders": "ALE/SpaceInvaders-v5",
 }
 
-def main(args):
-    try: 
-        env_map = MAPPING[args.id]
-        env = GameEnv(args.seed, env_map, args.num_envs, args.c, args.w, args.verbose)
+def run_game(args):
+    """Handles train/test for the Atari envs."""
+    env_map = MAPPING[args.id]
+    env = GameEnv(args.seed, env_map, args.num_envs,
+                  config_path=args.c,
+                  weights_path=args.w,
+                  verbose=args.verbose)
+    try:
         if args.mode == "train":
             env.train(args.o)
-        else: 
+        else:
             env.test(args.o, args.num_episodes)
-    except KeyboardInterrupt as e: 
+    except KeyboardInterrupt:
         env.save_weights(args.o)
+    finally:
         env.close()
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train/Render Tetris Simulations")
-    parser.add_argument("--id", type=str, default="pong", choices=["pong", "breakout", "invaders"])
-    parser.add_argument("--c", type=str, help="Config path for Tetris model")
-    parser.add_argument("--o", type=str, help="Output path for Tetris model")
-    parser.add_argument("--w", type=str, help="Path to available weights")
-    parser.add_argument("--seed", type=int, default=1898, help="Seed for experiment reproduciability")
-    parser.add_argument("--mode", choices=["train", "test"], default="train", help="Mode to test/train Tetris Agent")
-    parser.add_argument("--num_envs", type=int, help="Number of parallel environments to run at the same time")
-    parser.add_argument("--num_episodes", type=int, default=1, help="Number of episodes to run for testing")
-    parser.add_argument("--verbose", action="store_true", help="Render the Tetris game")
-    args = parser.parse_args()
+def run_gui(args):
+    """Launches the GUI for human or AI play."""
+    if args.env == "pong":
+        gui = PongGUI(MAPPING[args.env], args.c, args.w, args.mode)
+    elif args.env == "breakout":
+        gui = BreakoutGUI(MAPPING[args.env], args.c, args.w, args.mode)
+    elif args.env == "invaders":
+        gui = InvadersGUI(MAPPING[args.env], args.c, args.w, args.mode)
+    else: 
+        raise ValueError(f"[ERROR] Unsupported GUI environment: {args.env}")
     
-    main(args)
+    gui.run()
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Unified entrypoint for RL env (train/test) and GUI"
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    p_game = subparsers.add_parser(
+        "game", help="Train or test an Atari RL agent"
+    )
+    p_game.add_argument(
+        "--id", type=str, choices=list(MAPPING), default="pong",
+        help="Which Atari game"
+    )
+    p_game.add_argument(
+        "--c", required=True, help="Path to config file"
+    )
+    p_game.add_argument(
+        "--w", help="Path to initial weights (optional)"
+    )
+    p_game.add_argument(
+        "--o", required=True, help="Output path for saving model/weights"
+    )
+    p_game.add_argument(
+        "--seed", type=int, default=1898,
+        help="Random seed for reproducibility"
+    )
+    p_game.add_argument(
+        "--num_envs", type=int, default=1,
+        help="Number of parallel vectorized environments"
+    )
+    p_game.add_argument(
+        "--mode", choices=["train", "test"], default="train",
+        help="Whether to train or to run test episodes"
+    )
+    p_game.add_argument(
+        "--num_episodes", type=int, default=1,
+        help="If testing: how many episodes to run"
+    )
+    p_game.add_argument(
+        "--verbose", action="store_true",
+        help="Enable rendering/log details"
+    )
+    p_game.set_defaults(func=run_game)
+
+    p_gui = subparsers.add_parser(
+        "gui", help="Launch GUI for human/AI play"
+    )
+    p_gui.add_argument(
+        "--env", type=str, choices=list(MAPPING.keys()),
+        default="pong", help="Which game GUI to launch"
+    )
+    p_gui.add_argument(
+        "--c", required=True,
+        help="Config path for GUI frame return"
+    )
+    p_gui.add_argument(
+        "--w", help="Weights file for the model"
+    )
+    p_gui.add_argument(
+        "--mode", choices=["AI", "human"], required=True,
+        help="Control mode in GUI"
+    )
+    p_gui.set_defaults(func=run_gui)
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
