@@ -8,3 +8,4 @@ tetris-gymnasium
 pygame
 optuna
 ale-py
+ptflops
