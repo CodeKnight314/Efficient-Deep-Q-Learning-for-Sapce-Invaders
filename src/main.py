@@ -6,20 +6,23 @@ MAPPING = {
     "pong": "ALE/Pong-v5",
     "breakout": "ALE/Breakout-v5",
     "invaders": "ALE/SpaceInvaders-v5",
+    "assault": "ALE/Assault-v5", 
+    "riverraid": "ALE/Riverraid-v5",
+    "beamrider": "ALE/BeamRider-v5",
+    "kaboom": "ALE/Kaboom-v5",
+    "kungfu": "ALE/KungFuMaster-v5", 
+    "seaquest": "ALE/Seaquest-v5"
 }
 
 def run_game(args):
     """Handles train/test for the Atari envs."""
     env_map = MAPPING[args.id]
-    env = GameEnv(args.seed, env_map, args.num_envs,
-                  config_path=args.c,
-                  weights_path=args.w,
-                  verbose=args.verbose)
+    env = GameEnv(args.seed, env_map, args.nenvs, args.c, args.w, args.verbose)
     try:
         if args.mode == "train":
             env.train(args.o)
         else:
-            env.test(args.o, args.num_episodes)
+            env.test(args.o, args.neps, True if args.w == None else False)
     except KeyboardInterrupt:
         env.save_weights(args.o)
     finally:
@@ -31,7 +34,7 @@ def run_gui(args):
         gui = PongGUI(MAPPING[args.env], args.c, args.w, args.mode)
     elif args.env == "breakout":
         gui = BreakoutGUI(MAPPING[args.env], args.c, args.w, args.mode)
-    elif args.env == "invaders":
+    elif args.env == "kaboom":
         gui = InvadersGUI(MAPPING[args.env], args.c, args.w, args.mode)
     else: 
         raise ValueError(f"[ERROR] Unsupported GUI environment: {args.env}")
@@ -65,7 +68,7 @@ def main():
         help="Random seed for reproducibility"
     )
     p_game.add_argument(
-        "--num_envs", type=int, default=1,
+        "--nenvs", type=int, default=1,
         help="Number of parallel vectorized environments"
     )
     p_game.add_argument(
@@ -73,7 +76,7 @@ def main():
         help="Whether to train or to run test episodes"
     )
     p_game.add_argument(
-        "--num_episodes", type=int, default=1,
+        "--neps", type=int, default=1,
         help="If testing: how many episodes to run"
     )
     p_game.add_argument(
