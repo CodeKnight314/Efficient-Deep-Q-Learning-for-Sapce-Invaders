@@ -1,7 +1,7 @@
 from src.model import *
-from src.buffer import ReplayBuffer, PrioritizedReplayBuffer
+from src.buffer import ReplayBuffer, PrioritizedReplayBuffer, PERBufferSumTree
 import torch
-from torch.optim import AdamW
+from torch.optim import RMSprop
 import torch.nn as nn
 import numpy as np
 from typing import List
@@ -13,11 +13,11 @@ class GameAgent:
                  ac_dim: int, 
                  lr: float = 1e-4, 
                  min_lr: float = 1e-5,
-                 gamma: float = 0.99, 
-                 max_memory: int = 1000, 
-                 max_gradient: float = 0.5, 
-                 action_mask: List[int] = [5, 6], 
-                 buffer_type: str = "prioritized",
+                 gamma: float = 0.995, 
+                 max_memory: int = 100000, 
+                 max_gradient: float = 1.0, 
+                 action_mask: List[int] = [], 
+                 buffer_type: str = "PER",
                  scheduler_max: int = 1000000,
                  beta_start: int = 0.5,
                  beta_frames: int = 10000):
@@ -25,17 +25,19 @@ class GameAgent:
         self.action_mask = action_mask
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        if buffer_type == "replay":
+        if buffer_type == "REPLAY":
             self.buffer = ReplayBuffer(capacity=max_memory, device=self.device)
-        elif buffer_type == "prioritized":
+        elif buffer_type == "PER":
             self.buffer = PrioritizedReplayBuffer(capacity=max_memory, alpha=0.6, device=self.device)
+        elif buffer_type == "PER_SUMTREE":
+            self.buffer = PERBufferSumTree(max_len=max_memory, alpha=0.6)
         else:
             raise ValueError(f"Invalid buffer type: {buffer_type}. Expected 'replay' or 'prioritized'.")
         
-        self.model = GameModel(frame_stack, ac_dim).to(self.device)
-        self.target = GameModel(frame_stack, ac_dim).to(self.device)
+        self.model = EfficientGameModel(frame_stack, ac_dim).to(self.device)
+        self.target = EfficientGameModel(frame_stack, ac_dim).to(self.device)
         
-        self.opt = AdamW(params=self.model.parameters(), lr=lr)
+        self.opt = RMSprop(self.model.parameters(), lr=lr, alpha=0.95, eps=1e-2, centered=False)
         self.scheduler = CosineAnnealingLR(self.opt, scheduler_max, min_lr)
         
         self.criterion = nn.MSELoss(reduction="none")
@@ -87,7 +89,7 @@ class GameAgent:
     def update(self, batch_size: int):
         self.training_step += 1
         
-        if isinstance(self.buffer, PrioritizedReplayBuffer):
+        if isinstance(self.buffer, PrioritizedReplayBuffer) or isinstance(self.buffer, PERBufferSumTree):
             self.beta = min(1.0, self.beta_start + self.training_step * (1.0 - self.beta_start) / self.beta_frames)
             states, actions, rewards, next_states, dones, weights, indices = self.buffer.sample(batch_size, beta=self.beta)
         else:
