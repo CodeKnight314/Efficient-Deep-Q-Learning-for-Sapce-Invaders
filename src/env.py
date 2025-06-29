@@ -70,6 +70,8 @@ class GameEnv():
         self.history = {
             "reward": deque(maxlen=self.config["window_size"] * 2),
             "loss": deque(maxlen=self.config["window_size"] * 2),
+            "reward_history": [], 
+            "loss_history": []
         }
         
         self.epsilon = self.config["epsilon"]
@@ -94,7 +96,6 @@ class GameEnv():
     def _make_env(self, env_id: str, render_mode: str = None):
         env = gym.make(env_id, render_mode=render_mode, obs_type="grayscale")
         env = NoopResetEnv(env, noop_max=30)
-        env = MaxAndSkipEnv(env, skip=self.config["skip_frame"])
         env = EpisodicLifeEnv(env)
         env = ClipRewardEnv(env)
         env = ResizeObservation(env, (84, 84))
@@ -150,6 +151,7 @@ class GameEnv():
 
                 if total_frames % self.save_freq == 0:
                     checkpoint_path = os.path.join(path, f"checkpoint.pth")
+                    self.plot_history(path)
                     self.agent.save_weights(checkpoint_path)
                     if self.verbose:
                         logger.info(f"Checkpoint saved at frame {total_frames}")
@@ -179,6 +181,9 @@ class GameEnv():
 
             pbar_rewards = np.mean(self.history['reward']) if len(self.history["reward"]) > 0 else 0.0
             pbar_loss = np.mean(self.history['loss']) if len(self.history["loss"]) > 0 else 0.0
+            self.history["reward_history"].append(pbar_rewards)
+            self.history["loss_history"].append(pbar_loss)
+            
             pbar.set_postfix(
                 reward=f"{pbar_rewards:.4f}", 
                 loss=f"{pbar_loss:.4f}", 
@@ -192,8 +197,10 @@ class GameEnv():
         logger.info("Training completed. Saving final model weights...")
         self.agent.save_weights(os.path.join(path, "final_model.pth"))
         logger.info(f"Final model weights saved to: {os.path.join(path, 'final_model.pth')}")
+        
+        return np.mean(self.history['reward'])
 
-    def test(self, path: str, num_episodes: int):
+    def test(self, path: str, num_episodes: int, random: bool = False):
         import cv2
         os.makedirs(path, exist_ok=True)
 
@@ -205,7 +212,7 @@ class GameEnv():
         height, width, _ = frame.shape
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video_path = os.path.join(path, "tetris.mp4")
+        video_path = os.path.join(path, "record.mp4")
         video = cv2.VideoWriter(video_path, fourcc, 60, (width, height))
 
         total_rewards = 0
@@ -220,7 +227,11 @@ class GameEnv():
             while not done:
                 frame = env.render()
 
-                action = self.agent.select_action(state, 0.0)
+                if random:
+                    action = env.action_space.sample()
+                else: 
+                    action = self.agent.select_action(state, 0.0)
+                
                 video.write(frame)
 
                 state, reward, terminated, truncated, _ = env.step(action)
@@ -256,9 +267,15 @@ class GameEnv():
         self.agent.save_weights(path)
 
     def plot_history(self, path: str):
+        os.makedirs(path, exist_ok=True)
         plt.figure(figsize=(12, 6))
-        plt.plot(self.history["reward"], label="Reward")
-        plt.plot(self.history["loss"], label="Loss")
+        plt.plot(self.history["reward_history"], label="Reward")
         plt.legend()
-        plt.savefig(os.path.join(path, "history.png"))
+        plt.savefig(os.path.join(path, "reward_history.png"))
+        plt.close()
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.history["loss_history"], label="Loss")        
+        plt.legend()
+        plt.savefig(os.path.join(path, "loss_history.png"))
         plt.close()
