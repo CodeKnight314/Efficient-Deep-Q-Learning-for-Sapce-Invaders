@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from src.agent import GameModel
+from src.agent import GameModel, EfficientGameModel
 import pygame
 import yaml
 import torch
@@ -23,7 +23,7 @@ class MainGUI(ABC):
             self.config = yaml.safe_load(f)
 
         self.env = self._make_env(id, render_mode="rgb_array")
-        self.model = GameModel(4, self.env.action_space.n).to(self.device)  
+        self.model = EfficientGameModel(4, self.env.action_space.n).to(self.device)  
         if weights is not None:
             try:
                 self.model.load_weights(weights)   
