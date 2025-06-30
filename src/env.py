@@ -61,7 +61,8 @@ class GameEnv():
                                  self.buffer_type,
                                  self.config["scheduler_max"],
                                  self.config["beta_start"], 
-                                 self.config["beta_frames"])
+                                 self.config["beta_frames"],
+                                 self.config["n_step"])
         
         if weights is not None: 
             logger.info(f"Loading pre-trained weights from: {weights}")
@@ -73,6 +74,8 @@ class GameEnv():
             "reward_history": [], 
             "loss_history": []
         }
+        
+        self.n_step_buffer = [deque(maxlen=self.config["n_step"]) for _ in range(self.num_envs)]
         
         self.epsilon = self.config["epsilon"]
         self.epsilon_min = self.config["epsilon_min"]
@@ -102,6 +105,20 @@ class GameEnv():
         env = FrameStackObservation(env, stack_size=int(self.config["frame_stack"]))
     
         return env
+        
+    def compute_n_step_transition(self, buffer):
+        R = 0.0
+        last_idx = 0
+        for idx, (s, a, r, ns, done) in enumerate(buffer):
+            R += (self.agent.gamma ** idx) * r
+            last_idx = idx
+            if done:
+                break
+
+        s0, a0, *_ = buffer[0]
+        _,  _,  _, ns_last, done_last = buffer[last_idx]
+        gamma_n = self.agent.gamma ** (last_idx + 1)
+        return s0, a0, R, ns_last, done_last, gamma_n
         
     def train(self, path: str):
         logger.info(f"Starting training process. Model will be saved to: {path}")
@@ -134,9 +151,16 @@ class GameEnv():
                 
                 r_i = float(rewards[i])
                 d_i = bool(dones[i])
-
-                self.agent.push(prev_board, actions[i], r_i, next_board, d_i)
+                
+                self.n_step_buffer[i].append((prev_board, actions[i], r_i, next_board, d_i))
                 episode_rewards[i] += r_i
+                
+                if len(self.n_step_buffer[i]) == self.agent.n_step or d_i :
+                    n_step_transition = self.compute_n_step_transition(self.n_step_buffer[i])
+                    self.agent.push(*n_step_transition)
+                    
+                    if d_i: 
+                        self.n_step_buffer[i].clear()
 
                 if d_i:
                     self.history["reward"].append(float(episode_rewards[i]))

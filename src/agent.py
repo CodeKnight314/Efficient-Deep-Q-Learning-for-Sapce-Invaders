@@ -20,7 +20,8 @@ class GameAgent:
                  buffer_type: str = "PER",
                  scheduler_max: int = 1000000,
                  beta_start: int = 0.5,
-                 beta_frames: int = 10000):
+                 beta_frames: int = 10000,
+                 n_step: int = 3):
         
         self.action_mask = action_mask
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -41,6 +42,7 @@ class GameAgent:
         self.scheduler = CosineAnnealingLR(self.opt, scheduler_max, min_lr)
         
         self.criterion = nn.MSELoss(reduction="none")
+        
         self.gamma = gamma
         self.action_dim = ac_dim
         self.max_grad = max_gradient
@@ -48,6 +50,7 @@ class GameAgent:
         self.beta = self.beta_start
         self.beta_frames = beta_frames
         self.training_step = 0
+        self.n_step = n_step
 
         self.update_target_network(True)
         
@@ -91,9 +94,9 @@ class GameAgent:
         
         if isinstance(self.buffer, PrioritizedReplayBuffer) or isinstance(self.buffer, PERBufferSumTree):
             self.beta = min(1.0, self.beta_start + self.training_step * (1.0 - self.beta_start) / self.beta_frames)
-            states, actions, rewards, next_states, dones, weights, indices = self.buffer.sample(batch_size, beta=self.beta)
+            states, actions, rewards, next_states, dones, gamma_ns, weights, indices = self.buffer.sample(batch_size, beta=self.beta)
         else:
-            states, actions, rewards, next_states, dones = self.buffer.sample(batch_size)
+            states, actions, rewards, next_states, dones, gamma_ns = self.buffer.sample(batch_size)
             weights = torch.ones_like(rewards, device=self.device)
             indices = None
         
@@ -106,9 +109,8 @@ class GameAgent:
         with torch.no_grad():
             next_actions = self.model(next_states, normalize=True).argmax(1, keepdim=True)
             max_next_q = self.target(next_states, normalize=True).gather(1, next_actions)           
-            
-            dones = dones.unsqueeze(-1)
-            targets = rewards.unsqueeze(-1) + (1 - dones) * self.gamma * max_next_q
+
+            targets = rewards.unsqueeze(-1) + (1 - dones.unsqueeze(-1)) * gamma_ns.unsqueeze(-1) * max_next_q
             targets = targets.squeeze(1).to(self.device)
 
         current_q_values = self.model(states, normalize=True).gather(1, actions.unsqueeze(1)).squeeze(1)
@@ -132,5 +134,5 @@ class GameAgent:
         
         return loss.item(), q_value_mean, q_value_std
     
-    def push(self, state, action, reward, next_state, done): 
-        self.buffer.push(state, action, reward, next_state, done)
+    def push(self, state, action, reward, next_state, done, gamma_n): 
+        self.buffer.push(state, action, reward, next_state, done, gamma_n)
