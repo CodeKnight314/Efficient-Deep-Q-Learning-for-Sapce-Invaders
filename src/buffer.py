@@ -12,33 +12,40 @@ class ReplayBuffer:
         self.rewards = np.zeros(capacity, dtype=np.float32)
         self.next_states = np.zeros((capacity, 4, 84, 84), dtype=np.uint8)
         self.dones = np.zeros(capacity, dtype=np.float32)
-        self.gamma_n = np.zeros(capacity, dtype=np.float32)
         
         self.position = 0
         self.size = 0
 
-    def push(self, state, action, reward, next_state, done, gamma_n):
-        self.states[self.position] = state.cpu().numpy().astype(np.uint8)
-        self.actions[self.position] = action
-        self.rewards[self.position] = reward
-        self.next_states[self.position] = next_state.cpu().numpy().astype(np.uint8)
-        self.dones[self.position] = done
-        self.gamma_n[self.position] = gamma_n
-        
-        self.position = (self.position + 1) % self.capacity
-        self.size = min(self.size + 1, self.capacity)
+    def push(self, state, action, reward, next_state, done):
+        if state.ndim == 3:
+            state = np.expand_dims(state, 0)
+            next_state = np.expand_dims(next_state, 0)
+            action = np.expand_dims(action, 0)
+            reward = np.expand_dims(reward, 0)
+            done = np.expand_dims(done, 0)
+
+        batch_size = state.shape[0]
+        idx = (np.arange(batch_size) + self.position) % self.capacity
+
+        self.states[idx] = state.astype(np.uint8)
+        self.actions[idx] = action
+        self.rewards[idx] = reward
+        self.next_states[idx] = next_state.astype(np.uint8)
+        self.dones[idx] = done
+
+        self.position = (self.position + batch_size) % self.capacity
+        self.size = min(self.size + batch_size, self.capacity)
 
     def sample(self, batch_size: int):
         indices = np.random.choice(self.size, batch_size, replace=False)
-
-        states = torch.from_numpy(self.states[indices]).to(self.device, dtype=torch.float32) / 255.0
-        actions = torch.from_numpy(self.actions[indices]).to(self.device, dtype=torch.long)
-        rewards = torch.from_numpy(self.rewards[indices]).to(self.device)
-        next_states = torch.from_numpy(self.next_states[indices]).to(self.device, dtype=torch.float32) / 255.0
-        dones = torch.from_numpy(self.dones[indices]).to(self.device)
-        gamma_ns = torch.from_numpy(self.gamma_n[indices]).to(self.device)
-
-        return states, actions, rewards, next_states, dones, gamma_ns
+        
+        states = torch.from_numpy(self.states[indices]).to(self.device, dtype=torch.float32, non_blocking=True) / 255.0
+        actions = torch.from_numpy(self.actions[indices]).to(self.device, dtype=torch.long, non_blocking=True)
+        rewards = torch.from_numpy(self.rewards[indices]).to(self.device, dtype=torch.float32, non_blocking=True)
+        next_states = torch.from_numpy(self.next_states[indices]).to(self.device, dtype=torch.float32, non_blocking=True) / 255.0
+        dones = torch.from_numpy(self.dones[indices]).to(self.device, dtype=torch.bool, non_blocking=True)
+        
+        return states, actions, rewards, next_states, dones
 
     def __len__(self):
         return self.size
@@ -50,9 +57,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.priorities = np.zeros((capacity,), dtype=np.float32)
         self.max_priority = 1.0
 
-    def push(self, state, action, reward, next_state, done, gamma_n):
+    def push(self, state, action, reward, next_state, done):
         idx = self.position
-        super().push(state, action, reward, next_state, done, gamma_n)
+        super().push(state, action, reward, next_state, done)
         self.priorities[idx] = self.max_priority
 
     def sample(self, batch_size: int, beta: float = 0.4):
@@ -72,13 +79,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         rewards = torch.from_numpy(self.rewards[indices]).to(self.device)
         next_states = torch.from_numpy(self.next_states[indices]).to(self.device, dtype=torch.float32) / 255.0
         dones = torch.from_numpy(self.dones[indices]).to(self.device)
-        gamma_ns = torch.from_numpy(self.gamma_n[indices]).to(self.device)
 
         total = len(self)
         weights = (total * probs[indices]) ** (-beta)
         weights /= (weights.max() + 1e-8)
 
-        return states, actions, rewards, next_states, dones, gamma_ns, torch.tensor(weights, dtype=torch.float32, device=self.device), indices
+        return states, actions, rewards, next_states, dones, torch.tensor(weights, dtype=torch.float32, device=self.device), indices
 
     def update_priorities(self, indices: np.ndarray, new_priorities: np.ndarray):
         for idx, prio in zip(indices, new_priorities):
@@ -138,8 +144,8 @@ class PERBufferSumTree:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.max_priority = 1.0
         
-    def push(self, state, action, reward, next_state, done, gamma_n):
-        data = (state, action, reward, next_state, done, gamma_n)
+    def push(self, state, action, reward, next_state, done):
+        data = (state, action, reward, next_state, done)
         self.tree.add(self.max_priority, data)
         
     def sample(self, batch_size: int, beta: float):
@@ -157,7 +163,7 @@ class PERBufferSumTree:
                 idxs.append(idx)
                 priorities.append(p)
         
-        states, actions, rewards, next_states, dones, gamma_ns = zip(*batch)
+        states, actions, rewards, next_states, dones = zip(*batch)
         N = self.tree.n_entries
         P = np.array(priorities, dtype=np.float32)
         P_norm = P / self.tree.total()
@@ -169,10 +175,9 @@ class PERBufferSumTree:
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
         next_states = torch.stack([s.clone().detach() for s in next_states]).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
-        gamma_ns = torch.tensor(gamma_ns, dtype=torch.float32).to(self.device)
         weights = torch.as_tensor(weights, dtype=torch.float32).to(self.device)
         
-        return states, actions, rewards, next_states, dones, gamma_ns, weights, idxs
+        return states, actions, rewards, next_states, dones, weights, idxs
     
     def __len__(self):
         return self.tree.n_entries
