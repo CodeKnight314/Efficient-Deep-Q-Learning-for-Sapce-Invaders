@@ -17,64 +17,66 @@ class DepthwiseSeparableConv2d(nn.Module):
 class EfficientGameModel(nn.Module):
     def __init__(self, num_frames: int, action_space: int):
         super().__init__()
-        
+
         self.cnn = nn.Sequential(
             DepthwiseSeparableConv2d(num_frames, 32, kernel_size=8, stride=4, padding=2),
-            nn.GroupNorm(1, 32),
-            nn.SiLU(),
+            nn.ReLU(),
 
             DepthwiseSeparableConv2d(32, 64, kernel_size=4, stride=2, padding=1),
-            nn.GroupNorm(1, 64),
-            nn.SiLU(),
+            nn.ReLU(),
 
             DepthwiseSeparableConv2d(64, 64, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(1, 64),
-            nn.SiLU(),
+            nn.ReLU(),
 
             nn.AdaptiveAvgPool2d((7, 7)),
             nn.Flatten(),
         )
 
         feature_size = 64 * 7 * 7
-        
+
         self.value_stream = nn.Sequential(
-            nn.Linear(feature_size, 512), 
-            nn.SiLU(), 
+            nn.Linear(feature_size, 512),
+            nn.ReLU(),
             nn.Linear(512, 1)
         )
-        
+
         self.advantage_stream = nn.Sequential(
-            nn.Linear(feature_size, 512), 
-            nn.SiLU(), 
+            nn.Linear(feature_size, 512),
+            nn.ReLU(),
             nn.Linear(512, action_space)
         )
-        
+
         self.apply(self._init_weights)
-        
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            torch.nn.init.xavier_uniform_(module.weight)
+            nn.init.xavier_uniform_(module.weight)
             module.bias.data.fill_(0.01)
+
         elif isinstance(module, nn.Conv2d):
-            torch.nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-        
-    def forward(self, x: torch.Tensor, normalize: bool = False):
-        if normalize:
-            x = x / 255.0
-        
-        if len(x.shape) == 3:
+            if module.groups == module.in_channels:
+                nn.init.kaiming_normal_(module.weight, mode='fan_in',
+                                        nonlinearity='relu')
+            else:
+                nn.init.kaiming_normal_(module.weight, mode='fan_out',
+                                        nonlinearity='relu')
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+    def forward(self, x: torch.Tensor):
+        if x.ndim == 3:
             x = x.unsqueeze(0)
-            
-        board_embeddings = self.cnn(x)
-        value = self.value_stream(board_embeddings)
-        advantage = self.advantage_stream(board_embeddings)
-        
-        Q_values = value + (advantage - advantage.mean(dim=1, keepdim=True))
-        return Q_values
-    
+
+        feats = self.cnn(x)
+        value = self.value_stream(feats)
+        advantage = self.advantage_stream(feats)
+
+        q = value + (advantage - advantage.mean(dim=1, keepdim=True))
+        return q
+
     def load_weights(self, path: str):
-        self.load_state_dict(torch.load(path, map_location='cpu'))
-        
+        self.load_state_dict(torch.load(path, map_location='cuda' if torch.cuda.is_available() else 'cpu'))
+
     def save_weights(self, path: str):
         torch.save(self.state_dict(), path)
 
@@ -116,10 +118,7 @@ class GameModel(nn.Module):
         elif isinstance(module, nn.Conv2d):
             torch.nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
         
-    def forward(self, x: torch.Tensor, normalize: bool = False):
-        if normalize: 
-            x = x / 255.0
-        
+    def forward(self, x: torch.Tensor):
         if len(x.shape) == 3:
             x = x.unsqueeze(0)
             
@@ -131,7 +130,7 @@ class GameModel(nn.Module):
         return Q_values
     
     def load_weights(self, path: str):
-        self.load_state_dict(torch.load(path, map_location='cpu'))
+        self.load_state_dict(torch.load(path, map_location='cuda' if torch.cuda.is_available() else "cpu"))
         
     def save_weights(self, path: str):
         torch.save(self.state_dict(), path)
