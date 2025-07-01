@@ -20,8 +20,7 @@ class GameAgent:
                  buffer_type: str = "PER",
                  scheduler_max: int = 1000000,
                  beta_start: int = 0.5,
-                 beta_frames: int = 10000,
-                 n_step: int = 3):
+                 beta_frames: int = 10000):
         
         self.action_mask = action_mask
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -50,7 +49,6 @@ class GameAgent:
         self.beta = self.beta_start
         self.beta_frames = beta_frames
         self.training_step = 0
-        self.n_step = n_step
 
         self.update_target_network(True)
         
@@ -68,35 +66,45 @@ class GameAgent:
             for target_param, param in zip(self.target.parameters(), self.model.parameters()):
                 target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
                 
-    def select_action(self, state: torch.Tensor, epsilon: float = 0.01):
-        if np.random.random() < epsilon:
-            valid_actions = [i for i in range(self.action_dim) if i not in self.action_mask]
-            return np.random.choice(valid_actions)
+    def select_action(self, state: np.ndarray, epsilon: float = 0.01):
+        is_batch = state.ndim == 4
         
-        with torch.no_grad(): 
-            state = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
-            state = state.to(self.device)
-            
-            q_values = self.model(state)
-            
-            if q_values.dim() == 1:
-                for action in self.action_mask:
-                    q_values[action] = -float("inf")
-            else:
-                for action in self.action_mask:
-                    q_values[0, action] = -float("inf")
+        if not is_batch:
+            state = np.expand_dims(state, axis=0)
 
-            action = torch.argmax(q_values, dim=1).item()
-            return action
+        state_tensor = torch.as_tensor(state, dtype=torch.float32).to(self.device)
+
+        with torch.no_grad():
+            q_values = self.model(state_tensor)
+
+            if self.action_mask:
+                mask = torch.full_like(q_values, 0.0)
+                mask[:, self.action_mask] = float('-inf')
+                q_values += mask
+
+            batch_size = state.shape[0]
+            if epsilon > 0.0:
+                rand_mask = np.random.rand(batch_size) < epsilon
+                random_actions = np.random.choice(
+                    [i for i in range(self.action_dim) if i not in self.action_mask],
+                    size=batch_size
+                )
+                greedy_actions = torch.argmax(q_values, dim=1).cpu().numpy()
+                actions = np.where(rand_mask, random_actions, greedy_actions)
+            else:
+                actions = torch.argmax(q_values, dim=1).cpu().numpy()
+
+        return actions[0] if not is_batch else actions
+
             
     def update(self, batch_size: int):
         self.training_step += 1
         
         if isinstance(self.buffer, PrioritizedReplayBuffer) or isinstance(self.buffer, PERBufferSumTree):
             self.beta = min(1.0, self.beta_start + self.training_step * (1.0 - self.beta_start) / self.beta_frames)
-            states, actions, rewards, next_states, dones, gamma_ns, weights, indices = self.buffer.sample(batch_size, beta=self.beta)
+            states, actions, rewards, next_states, dones, weights, indices = self.buffer.sample(batch_size, beta=self.beta)
         else:
-            states, actions, rewards, next_states, dones, gamma_ns = self.buffer.sample(batch_size)
+            states, actions, rewards, next_states, dones = self.buffer.sample(batch_size)
             weights = torch.ones_like(rewards, device=self.device)
             indices = None
         
@@ -110,7 +118,7 @@ class GameAgent:
             next_actions = self.model(next_states).argmax(1, keepdim=True)
             max_next_q = self.target(next_states).gather(1, next_actions)           
 
-            targets = rewards.unsqueeze(-1) + (1 - dones.unsqueeze(-1)) * gamma_ns.unsqueeze(-1) * max_next_q
+            targets = rewards.unsqueeze(-1) + (1 - dones.unsqueeze(-1)) * self.gamma * max_next_q
             targets = targets.squeeze(1).to(self.device)
 
         current_q_values = self.model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
@@ -120,7 +128,6 @@ class GameAgent:
         
         self.opt.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad)
         self.opt.step()
         self.scheduler.step()
 
@@ -134,5 +141,5 @@ class GameAgent:
         
         return loss.item(), q_value_mean, q_value_std
     
-    def push(self, state, action, reward, next_state, done, gamma_n): 
-        self.buffer.push(state, action, reward, next_state, done, gamma_n)
+    def push(self, state, action, reward, next_state, done): 
+        self.buffer.push(state, action, reward, next_state, done)
