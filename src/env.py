@@ -42,14 +42,6 @@ class GameEnv():
             autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP
         )
         
-        logger.info("Initializing TetrisAgent with configuration:")
-        logger.info(f"- Environment: {env_id}")
-        logger.info(f"- Frame stack: {self.config['frame_stack']}")
-        logger.info(f"- Learning rate: {self.config['lr']}")
-        logger.info(f"- Gamma: {self.config['gamma']}")
-        logger.info(f"- Max memory: {self.config['max_memory']}")
-        logger.info(f"- Action Space: {self.env.action_space[0].n}")
-        
         self.agent = GameAgent(self.config["frame_stack"], 
                                  self.env.action_space[0].n, 
                                  self.config["lr"], 
@@ -61,66 +53,89 @@ class GameEnv():
                                  self.buffer_type,
                                  self.config["scheduler_max"],
                                  self.config["beta_start"], 
-                                 self.config["beta_frames"],
-                                 self.config["n_step"])
+                                 self.config["beta_frames"])
         
         if weights is not None: 
             logger.info(f"Loading pre-trained weights from: {weights}")
             self.agent.load_weights(weights)
 
         self.history = {
-            "reward": deque(maxlen=self.config["window_size"] * 2),
-            "loss": deque(maxlen=self.config["window_size"] * 2),
+            "reward": deque(maxlen=self.config["window_size"]),
+            "loss": deque(maxlen=self.config["window_size"]),
             "reward_history": [], 
-            "loss_history": []
+            "loss_history": [],
+            "q_mean_history": [],
+            "q_std_history": []
         }
         
-        self.n_step_buffer = [deque(maxlen=self.config["n_step"]) for _ in range(self.num_envs)]
-        
-        self.epsilon = self.config["epsilon"]
+        self.epsilon_start = self.config["epsilon_start"]
         self.epsilon_min = self.config["epsilon_min"]
-        self.epsilon_decay = self.config["epsilon_decay"]
+        self.epsilon_decay_frames = self.config["epsilon_decay_frames"]
         
         self.max_frames = self.config["max_frames"]
         self.batch_size = self.config["batch_size"]
-        self.update_freq = self.config["update_freq"]
         self.reward_window_size = self.config["window_size"]
         
         self.best_reward = float('-inf')
         self.save_freq = self.config["save_freq"]
-        self.verbose = verbose
+        self.target_update_freq = self.config["target_update_freq"]
+        self.train_freq = self.config["train_freq"]
+        self.gradient_step = self.config["gradient_step"]
         
+        self.verbose = verbose
+        logger.info("Initializing TetrisAgent with configuration:")
+        logger.info(f"- Environment: {env_id}")
+        logger.info(f"- Frame stack: {self.config['frame_stack']}")
+        logger.info(f"- Learning rate: {self.config['lr']}")
+        logger.info(f"- Gamma: {self.config['gamma']}")
+        logger.info(f"- Max memory: {self.config['max_memory']}")
+        logger.info(f"- Action Space: {self.env.action_space[0].n}")
+        logger.info(f"- Update:Sample ratio: {1}: {(self.num_envs * self.train_freq)/self.gradient_step:.4f}")
+        logger.info(f"- Total Gradien Steps: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step}")
+        logger.info(f"- Total Samples Read: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step * self.batch_size}")
         logger.info(f"Environment initialized with seed: {seed}")
         
     def set_seed(self, seed: int):
         torch.manual_seed(seed)
         np.random.seed(seed)
         
-    def _make_env(self, env_id: str, render_mode: str = None):
+    def _make_env(self, env_id: str, render_mode: str = None, eval: bool = False):
         env = gym.make(env_id, render_mode=render_mode, obs_type="grayscale")
         env = NoopResetEnv(env, noop_max=30)
+        env = MaxAndSkipEnv(env, skip=self.config["skip_frame"])
         env = EpisodicLifeEnv(env)
-        env = ClipRewardEnv(env)
+        if not eval:
+            env = ClipRewardEnv(env)
         env = ResizeObservation(env, (84, 84))
         env = FrameStackObservation(env, stack_size=int(self.config["frame_stack"]))
     
         return env
+    
+    def warmup(self):
+        state, _ = self.env.reset()
+        counter = 0
+        warmup_target = self.config.get("warmup", 50000)
         
-    def compute_n_step_transition(self, buffer):
-        R = 0.0
-        last_idx = 0
-        for idx, (s, a, r, ns, done) in enumerate(buffer):
-            R += (self.agent.gamma ** idx) * r
-            last_idx = idx
-            if done:
-                break
-
-        s0, a0, *_ = buffer[0]
-        _,  _,  _, ns_last, done_last = buffer[last_idx]
-        gamma_n = self.agent.gamma ** (last_idx + 1)
-        return s0, a0, R, ns_last, done_last, gamma_n
+        logger.info(f"Starting warmup phase: collecting {warmup_target} transitions")
         
+        pbar = tqdm(total=warmup_target, desc="Warmup", unit="transitions")
+        
+        while counter < warmup_target:
+            actions = self.env.action_space.sample()
+            next_state, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            dones = np.logical_or(terminateds, truncateds)
+            
+            self.agent.push(state, actions, rewards, next_state, dones)
+            counter += self.num_envs
+            pbar.update(self.num_envs)
+            
+            state = next_state
+        
+        pbar.close()
+        logger.info(f"Warmup completed: {counter} transitions collected")
+            
     def train(self, path: str):
+        self.warmup()
         logger.info(f"Starting training process. Model will be saved to: {path}")
         os.makedirs(path, exist_ok=True)
 
@@ -132,43 +147,33 @@ class GameEnv():
         pbar = tqdm(total=self.max_frames, desc="Frames")
 
         while total_frames < self.max_frames:
-            epsilon = max(self.epsilon_min, self.epsilon * (self.epsilon_decay ** (total_frames / 1000)))
+            epsilon = max(self.epsilon_min, self.epsilon_start - (self.epsilon_start - self.epsilon_min) * min(total_frames / self.epsilon_decay_frames, 1.0))
 
-            actions = []
-            for i in range(self.num_envs):
-                single_board = state[i]
-                a_i = self.agent.select_action(single_board, epsilon)
-                actions.append(int(a_i))
-                    
-            actions = np.array(actions, dtype=np.int32)
-
+            actions = self.agent.select_action(state, epsilon)
             next_state, rewards, terminateds, truncateds, infos = self.env.step(actions)
             dones = np.logical_or(terminateds, truncateds)
 
-            for i in range(self.num_envs):
-                prev_board = torch.tensor(state[i]).float()
-                next_board = torch.tensor(next_state[i]).float()
-                
-                r_i = float(rewards[i])
-                d_i = bool(dones[i])
-                
-                self.n_step_buffer[i].append((prev_board, actions[i], r_i, next_board, d_i))
-                episode_rewards[i] += r_i
-                
-                if len(self.n_step_buffer[i]) == self.agent.n_step or d_i :
-                    n_step_transition = self.compute_n_step_transition(self.n_step_buffer[i])
-                    self.agent.push(*n_step_transition)
-                    
-                    if d_i: 
-                        self.n_step_buffer[i].clear()
+            episode_rewards += rewards
 
-                if d_i:
-                    self.history["reward"].append(float(episode_rewards[i]))
-                    episode_rewards[i] = 0.0
+            finished = np.where(dones)[0]
 
-                total_frames += 1
+            if len(finished) > 0:
+                self.history["reward"].extend(episode_rewards[finished])
+            episode_rewards[finished] = 0.0
+            
+            self.agent.push(state, actions, rewards, next_state, dones)
 
-                if total_frames % self.update_freq == 0:
+            q_value_mean = []
+            q_value_std = []
+            
+            if total_frames % (self.train_freq * self.num_envs) == 0:
+                for _ in range(self.gradient_step):
+                    loss, mean, std = self.agent.update(self.batch_size)
+                    q_value_mean.append(mean)
+                    q_value_std.append(std)
+                    self.history["loss"].append(loss)
+
+                if total_frames % self.target_update_freq == 0:
                     self.agent.update_target_network(hard_update=True)
                     if self.verbose:
                         logger.info(f"Target network updated at frame {total_frames}")
@@ -176,20 +181,18 @@ class GameEnv():
                 if total_frames % self.save_freq == 0:
                     checkpoint_path = os.path.join(path, f"checkpoint.pth")
                     self.plot_history(path)
+                    self.write_data(path)
                     self.agent.save_weights(checkpoint_path)
                     if self.verbose:
-                        logger.info(f"Checkpoint saved at frame {total_frames}")
-
-            pbar.update(self.num_envs)
-
-            q_value_mean = 0.0
-            q_value_std = 0.0
+                        logger.info(f"Checkpoint saved at frame {total_frames}")         
+            else: 
+                continue
             
-            if len(self.agent.buffer) > self.batch_size:
-                loss, mean, std = self.agent.update(self.batch_size)
-                q_value_mean = mean
-                q_value_std = std
-                self.history["loss"].append(loss)
+            total_frames += 1
+            pbar.update(1)
+                    
+            q_value_mean = np.mean(np.array(q_value_mean))
+            q_value_std = np.mean(np.array(q_value_std))
 
             if len(self.history["reward"]) >= self.reward_window_size:
                 recent_reward_avg = np.mean(self.history["reward"]) if len(self.history["reward"]) > 0 else 0.0
@@ -207,6 +210,8 @@ class GameEnv():
             pbar_loss = np.mean(self.history['loss']) if len(self.history["loss"]) > 0 else 0.0
             self.history["reward_history"].append(pbar_rewards)
             self.history["loss_history"].append(pbar_loss)
+            self.history["q_mean_history"].append(q_value_mean)
+            self.history["q_std_history"].append(q_value_std)
             
             pbar.set_postfix(
                 reward=f"{pbar_rewards:.4f}", 
@@ -221,6 +226,8 @@ class GameEnv():
         logger.info("Training completed. Saving final model weights...")
         self.agent.save_weights(os.path.join(path, "final_model.pth"))
         logger.info(f"Final model weights saved to: {os.path.join(path, 'final_model.pth')}")
+        self.plot_history(path)
+        self.write_data(path)
         
         return np.mean(self.history['reward'])
 
@@ -228,7 +235,7 @@ class GameEnv():
         import cv2
         os.makedirs(path, exist_ok=True)
 
-        env = self._make_env(self.id, render_mode="rgb_array")
+        env = self._make_env(self.id, render_mode="rgb_array", eval=True)
         self.agent.model.eval()
 
         state, _ = env.reset()
@@ -254,6 +261,7 @@ class GameEnv():
                 if random:
                     action = env.action_space.sample()
                 else: 
+                    state = state / 255.0
                     action = self.agent.select_action(state, 0.0)
                 
                 video.write(frame)
@@ -279,7 +287,17 @@ class GameEnv():
         if self.verbose:
             logger.info(f"Video saved to: {video_path}")
         del env
-
+        
+    def write_data(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        for key in self.history:
+            if key.endswith("_history"):
+                filename = os.path.join(path, f"{key}.txt")
+                with open(filename, "w") as f:
+                    for value in self.history[key]:
+                        f.write(f"{value}\n")
+                if self.verbose:
+                    logger.info(f"Wrote {key} to {filename}")
 
     def close(self):
         self.env.close() 
@@ -293,7 +311,7 @@ class GameEnv():
     def plot_history(self, path: str):
         os.makedirs(path, exist_ok=True)
         plt.figure(figsize=(12, 6))
-        plt.plot(self.history["reward_history"], label="Reward")
+        plt.plot(self.history["reward_history"], label="Clipped Reward")
         plt.legend()
         plt.savefig(os.path.join(path, "reward_history.png"))
         plt.close()
@@ -302,4 +320,16 @@ class GameEnv():
         plt.plot(self.history["loss_history"], label="Loss")        
         plt.legend()
         plt.savefig(os.path.join(path, "loss_history.png"))
+        plt.close()
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.history["q_mean_history"], label="Q-Value")        
+        plt.legend()
+        plt.savefig(os.path.join(path, "q_mean_history.png"))
+        plt.close()
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.history["q_std_history"], label="Q-Std")        
+        plt.legend()
+        plt.savefig(os.path.join(path, "q_std_history.png"))
         plt.close()
