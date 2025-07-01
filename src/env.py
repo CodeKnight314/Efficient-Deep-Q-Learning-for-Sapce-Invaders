@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class GameEnv(): 
     def __init__(self, seed: int, env_id: str, num_envs: int, config: str, weights: str = None, verbose: bool = True):
-        logger.info(f"Initializing Tetris environment with {num_envs} parallel environments")
+        logger.info(f"Initializing GamePlay environment with {num_envs} parallel environments")
         with open(config, 'r') as f: 
             self.config = yaml.safe_load(f)
         
@@ -83,7 +83,7 @@ class GameEnv():
         self.gradient_step = self.config["gradient_step"]
         
         self.verbose = verbose
-        logger.info("Initializing TetrisAgent with configuration:")
+        logger.info("Initializing GameAgent with configuration:")
         logger.info(f"- Environment: {env_id}")
         logger.info(f"- Frame stack: {self.config['frame_stack']}")
         logger.info(f"- Learning rate: {self.config['lr']}")
@@ -91,8 +91,8 @@ class GameEnv():
         logger.info(f"- Max memory: {self.config['max_memory']}")
         logger.info(f"- Action Space: {self.env.action_space[0].n}")
         logger.info(f"- Update:Sample ratio: {1}: {(self.num_envs * self.train_freq)/self.gradient_step:.4f}")
-        logger.info(f"- Total Gradien Steps: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step}")
-        logger.info(f"- Total Samples Read: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step * self.batch_size}")
+        logger.info(f"- Total Expected Gradient Steps: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step}")
+        logger.info(f"- Total Expected Samples Read: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step * self.batch_size}")
         logger.info(f"Environment initialized with seed: {seed}")
         
     def set_seed(self, seed: int):
@@ -166,7 +166,7 @@ class GameEnv():
             q_value_mean = []
             q_value_std = []
             
-            if total_frames % (self.train_freq * self.num_envs) == 0:
+            if (total_frames+1) % (self.train_freq * self.num_envs) == 0:
                 for _ in range(self.gradient_step):
                     loss, mean, std = self.agent.update(self.batch_size)
                     q_value_mean.append(mean)
@@ -184,15 +184,19 @@ class GameEnv():
                     self.write_data(path)
                     self.agent.save_weights(checkpoint_path)
                     if self.verbose:
-                        logger.info(f"Checkpoint saved at frame {total_frames}")         
-            else: 
-                continue
-            
+                        logger.info(f"Checkpoint saved at frame {total_frames}")     
+                        
             total_frames += 1
             pbar.update(1)
                     
-            q_value_mean = np.mean(np.array(q_value_mean))
-            q_value_std = np.mean(np.array(q_value_std))
+            if q_value_mean: 
+                q_mean = np.mean(q_value_mean)
+                q_std = np.mean(q_value_std)
+                self.history["q_mean_history"].append(q_mean)
+                self.history["q_std_history"].append(q_std)
+            else:
+                q_mean = self.history["q_mean_history"][-1] if len(self.history["q_mean_history"]) > 0 else 0.0
+                q_std = self.history["q_std_history"][-1] if len(self.history["q_std_history"]) > 0 else 0.0
 
             if len(self.history["reward"]) >= self.reward_window_size:
                 recent_reward_avg = np.mean(self.history["reward"]) if len(self.history["reward"]) > 0 else 0.0
@@ -210,16 +214,14 @@ class GameEnv():
             pbar_loss = np.mean(self.history['loss']) if len(self.history["loss"]) > 0 else 0.0
             self.history["reward_history"].append(pbar_rewards)
             self.history["loss_history"].append(pbar_loss)
-            self.history["q_mean_history"].append(q_value_mean)
-            self.history["q_std_history"].append(q_value_std)
-            
+
             pbar.set_postfix(
                 reward=f"{pbar_rewards:.4f}", 
                 loss=f"{pbar_loss:.4f}", 
                 epsilon=f"{epsilon:.4f}",
                 beta=f"{self.agent.beta:.4f}",
-                q_values=f"{q_value_mean:.4f}",
-                q_values_std=f"{q_value_std:.4f}",
+                q_values=f"{q_mean:.4f}",
+                q_values_std=f"{q_std:.4f}",
             )
 
         pbar.close()
