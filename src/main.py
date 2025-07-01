@@ -10,7 +10,6 @@ MAPPING = {
     "riverraid": "ALE/Riverraid-v5",
     "beamrider": "ALE/BeamRider-v5",
     "kaboom": "ALE/Kaboom-v5",
-    "kungfu": "ALE/KungFuMaster-v5", 
     "seaquest": "ALE/Seaquest-v5"
 }
 
@@ -34,7 +33,7 @@ def run_gui(args):
         gui = PongGUI(MAPPING[args.env], args.c, args.w, args.mode)
     elif args.env == "breakout":
         gui = BreakoutGUI(MAPPING[args.env], args.c, args.w, args.mode)
-    elif args.env == "kaboom":
+    elif args.env == "invaders":
         gui = InvadersGUI(MAPPING[args.env], args.c, args.w, args.mode)
     else: 
         raise ValueError(f"[ERROR] Unsupported GUI environment: {args.env}")
@@ -100,7 +99,7 @@ def main():
         "--w", help="Weights file for the model"
     )
     p_gui.add_argument(
-        "--mode", choices=["AI", "human"], required=True,
+        "--mode", default="AI", choices=["AI", "human"],
         help="Control mode in GUI"
     )
     p_gui.set_defaults(func=run_gui)
