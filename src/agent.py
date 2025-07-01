@@ -41,7 +41,7 @@ class GameAgent:
         self.opt = RMSprop(self.model.parameters(), lr=lr, alpha=0.95, eps=1e-2, centered=False)
         self.scheduler = CosineAnnealingLR(self.opt, scheduler_max, min_lr)
         
-        self.criterion = nn.MSELoss(reduction="none")
+        self.criterion = nn.SmoothL1Loss(reduction="none")
         
         self.gamma = gamma
         self.action_dim = ac_dim
@@ -61,7 +61,7 @@ class GameAgent:
     def save_weights(self, path: str):
         self.model.save_weights(path)
         
-    def update_target_network(self, hard_update: bool = True, tau: float = 0.05):
+    def update_target_network(self, hard_update: bool = True, tau: float = 0.005):
         if hard_update: 
             self.target.load_state_dict(self.model.state_dict())
         else: 
@@ -77,7 +77,7 @@ class GameAgent:
             state = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
             state = state.to(self.device)
             
-            q_values = self.model(state, normalize=True)
+            q_values = self.model(state)
             
             if q_values.dim() == 1:
                 for action in self.action_mask:
@@ -107,13 +107,13 @@ class GameAgent:
         dones = dones.float().to(self.device)
         
         with torch.no_grad():
-            next_actions = self.model(next_states, normalize=True).argmax(1, keepdim=True)
-            max_next_q = self.target(next_states, normalize=True).gather(1, next_actions)           
+            next_actions = self.model(next_states).argmax(1, keepdim=True)
+            max_next_q = self.target(next_states).gather(1, next_actions)           
 
             targets = rewards.unsqueeze(-1) + (1 - dones.unsqueeze(-1)) * gamma_ns.unsqueeze(-1) * max_next_q
             targets = targets.squeeze(1).to(self.device)
 
-        current_q_values = self.model(states, normalize=True).gather(1, actions.unsqueeze(1)).squeeze(1)
+        current_q_values = self.model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
         raw_loss = self.criterion(current_q_values, targets)
         weighted = weights * raw_loss
         loss = weighted.mean() 
