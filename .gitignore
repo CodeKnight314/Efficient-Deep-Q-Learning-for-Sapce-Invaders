@@ -1,1 +1,8 @@
 .DS_Store
+src/__pycache__/wrappers.cpython-312.pyc
+src/__pycache__/model.cpython-312.pyc
+src/__pycache__/main.cpython-312.pyc
+src/__pycache__/gui.cpython-312.pyc
+src/__pycache__/env.cpython-312.pyc
+src/__pycache__/buffer.cpython-312.pyc
+src/__pycache__/agent.cpython-312.pyc
