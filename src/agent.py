@@ -73,7 +73,8 @@ class GameAgent:
             state = np.expand_dims(state, axis=0)
 
         state_tensor = torch.as_tensor(state, dtype=torch.float32).to(self.device)
-
+        state_tensor = state_tensor / 255.0
+        
         with torch.no_grad():
             q_values = self.model(state_tensor)
 
@@ -97,11 +98,9 @@ class GameAgent:
         return actions[0] if not is_batch else actions
 
             
-    def update(self, batch_size: int):
-        self.training_step += 1
-        
+    def update(self, batch_size: int, frame_step: int):
         if isinstance(self.buffer, PrioritizedReplayBuffer) or isinstance(self.buffer, PERBufferSumTree):
-            self.beta = min(1.0, self.beta_start + self.training_step * (1.0 - self.beta_start) / self.beta_frames)
+            self.beta = min(1.0, self.beta_start + (1.0 - self.beta_start) * (frame_step / self.beta_frames))
             states, actions, rewards, next_states, dones, weights, indices = self.buffer.sample(batch_size, beta=self.beta)
         else:
             states, actions, rewards, next_states, dones = self.buffer.sample(batch_size)
