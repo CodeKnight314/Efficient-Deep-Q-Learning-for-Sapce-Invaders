@@ -6,3 +6,4 @@ src/__pycache__/gui.cpython-312.pyc
 src/__pycache__/env.cpython-312.pyc
 src/__pycache__/buffer.cpython-312.pyc
 src/__pycache__/agent.cpython-312.pyc
+src/config/base_config.yaml
