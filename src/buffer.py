@@ -37,7 +37,8 @@ class ReplayBuffer:
         self.size = min(self.size + batch_size, self.capacity)
 
     def sample(self, batch_size: int):
-        indices = np.random.choice(self.size, batch_size, replace=False)
+        indices = np.random.randint(0, self.size - 1, batch_size, replace=False)
+        np.random.shuffle(indices)
         
         states = torch.from_numpy(self.states[indices]).to(self.device, dtype=torch.float32, non_blocking=True) / 255.0
         actions = torch.from_numpy(self.actions[indices]).to(self.device, dtype=torch.long, non_blocking=True)
@@ -58,9 +59,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.max_priority = 1.0
 
     def push(self, state, action, reward, next_state, done):
-        idx = self.position
+        start = self.position
         super().push(state, action, reward, next_state, done)
-        self.priorities[idx] = self.max_priority
+        batch_size = state.shape[0] if state.ndim == 4 else 1
+        idxs = (np.arange(batch_size) + start) % self.capacity
+        self.priorities[idxs] = self.max_priority
 
     def sample(self, batch_size: int, beta: float = 0.4):
         prios = self.priorities[:self.size]
@@ -72,7 +75,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         else:
             probs /= prob_sum
 
-        indices = np.random.choice(self.size, batch_size, p=probs, replace=False)
+        indices = np.random.randint(0, self.size - 1, batch_size, p=probs, replace=False)
+        np.random.shuffle(indices)
         
         states = torch.from_numpy(self.states[indices]).to(self.device, dtype=torch.float32) / 255.0
         actions = torch.from_numpy(self.actions[indices]).to(self.device, dtype=torch.long)
@@ -88,7 +92,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def update_priorities(self, indices: np.ndarray, new_priorities: np.ndarray):
         for idx, prio in zip(indices, new_priorities):
-            priority = abs(prio) + 1e-6
+            priority = min(abs(prio) + 1e-6, 1.0)
             self.priorities[idx] = priority
             self.max_priority = max(self.max_priority, priority)
             
