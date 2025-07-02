@@ -8,7 +8,7 @@ max_gradient: 10.0
 epsilon_start: 1.0
 epsilon_min: 0.1
 epsilon_decay_frames: 1000000
-batch_size: 64
+batch_size: 256
 save_freq: 100000
 max_frames: 10000000
 window_size: 100
@@ -19,4 +19,5 @@ beta_start: 0.4
 beta_frames: 1000000
 target_update_freq: 10000
 train_freq: 1
-gradient_step: 64
+gradient_step: 128
+reset_freq: 200000
