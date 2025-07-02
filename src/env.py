@@ -81,6 +81,7 @@ class GameEnv():
         self.target_update_freq = self.config["target_update_freq"]
         self.train_freq = self.config["train_freq"]
         self.gradient_step = self.config["gradient_step"]
+        self.reset_freq = self.config["reset_freq"]
         
         self.verbose = verbose
         logger.info("Initializing GameAgent with configuration:")
@@ -90,7 +91,7 @@ class GameEnv():
         logger.info(f"- Gamma: {self.config['gamma']}")
         logger.info(f"- Max memory: {self.config['max_memory']}")
         logger.info(f"- Action Space: {self.env.action_space[0].n}")
-        logger.info(f"- Update:Sample ratio: {1}: {(self.num_envs * self.train_freq)/self.gradient_step:.4f}")
+        logger.info(f"- Update:Sample ratio: {(1/((self.num_envs * self.train_freq)/self.gradient_step)):.4f}: {1}")
         logger.info(f"- Total Expected Gradient Steps: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step}")
         logger.info(f"- Total Expected Samples Read: {round(self.max_frames/(self.num_envs * self.train_freq)) * self.gradient_step * self.batch_size}")
         logger.info(f"Environment initialized with seed: {seed}")
@@ -165,14 +166,8 @@ class GameEnv():
 
             q_value_mean = []
             q_value_std = []
-            
-            if (total_frames+1) % (self.train_freq * self.num_envs) == 0:
-                for _ in range(self.gradient_step):
-                    loss, mean, std = self.agent.update(self.batch_size)
-                    q_value_mean.append(mean)
-                    q_value_std.append(std)
-                    self.history["loss"].append(loss)
 
+            for _ in range(self.num_envs):
                 if total_frames % self.target_update_freq == 0:
                     self.agent.update_target_network(hard_update=True)
                     if self.verbose:
@@ -184,10 +179,21 @@ class GameEnv():
                     self.write_data(path)
                     self.agent.save_weights(checkpoint_path)
                     if self.verbose:
-                        logger.info(f"Checkpoint saved at frame {total_frames}")     
+                        logger.info(f"Checkpoint saved at frame {total_frames}")  
                         
-            total_frames += 1
-            pbar.update(1)
+                if total_frames % self.reset_freq == 0: 
+                    self.agent.model.reset()
+                    self.agent.update_target_network(hard_update=True)   
+                            
+                total_frames += 1
+                pbar.update(1)
+            
+            if total_frames % (self.train_freq * self.num_envs) == 0:
+                for _ in range(self.gradient_step):
+                    loss, mean, std = self.agent.update(self.batch_size, total_frames)
+                    q_value_mean.append(mean)
+                    q_value_std.append(std)
+                    self.history["loss"].append(loss)
                     
             if q_value_mean: 
                 q_mean = np.mean(q_value_mean)
@@ -263,7 +269,6 @@ class GameEnv():
                 if random:
                     action = env.action_space.sample()
                 else: 
-                    state = state / 255.0
                     action = self.agent.select_action(state, 0.0)
                 
                 video.write(frame)
