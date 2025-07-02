@@ -73,6 +73,10 @@ class EfficientGameModel(nn.Module):
 
         q = value + (advantage - advantage.mean(dim=1, keepdim=True))
         return q
+    
+    def reset(self): 
+        self.value_stream.apply(self._init_weights)
+        self.advantage_stream.apply(self._init_weights)
 
     def load_weights(self, path: str):
         self.load_state_dict(torch.load(path, map_location='cuda' if torch.cuda.is_available() else 'cpu'))
@@ -128,6 +132,10 @@ class GameModel(nn.Module):
         
         Q_values = value + (advantage - advantage.mean(dim=1, keepdim=True))
         return Q_values
+    
+    def reset(self): 
+        self.value_stream.apply(self._init_weights)
+        self.advantage_stream.apply(self._init_weights)
     
     def load_weights(self, path: str):
         self.load_state_dict(torch.load(path, map_location='cuda' if torch.cuda.is_available() else "cpu"))
