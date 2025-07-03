@@ -5,7 +5,6 @@
   <img src="resources/videos/space_invaders_gm.gif" width="45%" title="Standard D3QN Gameplay" />
 </p>
 
-
 ## Overview
 This repository is a resource-conscious reinforcement learning framework designed to train Deep Q-Network (DQN) agents for Atari games—specifically Space Invaders—on consumer-grade hardware. Traditional DQN implementations often demand millions of frames and substantial computational resources, placing them out of reach for individuals or small labs. This project explores architectural optimizations and training strategies that reduce compute and memory restrictions while retaining favorable performance.
 
@@ -24,19 +23,19 @@ Specifically, I leverage modifications of the CNN backbone and splitting the ful
 The modified D3QN model is compared against standard D3QN model to demonstrate the efficiency gains from CNN modifications.
 
 <p align="center">
-  <img src="resources/graphs/inference_batch_size.png" width="50%" title="Runtime vs batch size" />
+  <img src="resources/graphs/inference_batch_size.png" title="Runtime vs batch size" />
 </p>
 
 The modifications from the CNN's backbone provide minor advantage in handling larger batches as seen from the comparison. The Efficient D3QN (EDQ3N) is able handle batch sizes of 256 roughly 31.47% faster than standard D3QN on same batches. This allowed EDQ3N to train on slightly more batches per iteration without significantly increasing computation time. Across comparison in resolution and number of stacked frmaes, EDQ3N demonstrate similar advantages but arguably, the benefits are not effective unless resolution goes beyond (84, 84) which is impractical.
 
 <p align="center">
-  <img src="resources/graphs/inference_num_frames.png" width="65%" title="Runtime vs batch size" />
-  <img src="resources/graphs/inference_resolution.png" width="65%" title="Runtime vs resolution" />
+  <img src="resources/graphs/inference_num_frames.png" title="Runtime vs batch size" />
+  <img src="resources/graphs/inference_resolution.png" title="Runtime vs resolution" />
 </p>
 
 ### Performance results
 <p align="center">
-  <img src="resources/graphs/d3qn_comparison.png" width="50%" title="Episodic Reward Comparison"/>    
+  <img src="resources/graphs/d3qn_comparison.png" title="Episodic Reward Comparison"/>    
 </p>
 The modification to the DQN structure along with the layer reinitialization allowed ED3QN to reach higher performance ceiling in the same number of episodes. As a result, ED3QN was able to score more points than its counter part. As seen from the graph, despite periodically resetting the network's fully connected layers, ED3QN was able to reach higher performance ceiling in the same span of time. In comparison, D3QN remained stagnate and oscillated between 3 and 5 rewards per step. Comparing both models on 100 lives, ED3QN was able to score 57% more points than its counter part:
 <p align="center">
