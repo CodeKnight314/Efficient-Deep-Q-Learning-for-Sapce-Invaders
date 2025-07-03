@@ -20,7 +20,8 @@ class GameAgent:
                  buffer_type: str = "PER",
                  scheduler_max: int = 1000000,
                  beta_start: int = 0.5,
-                 beta_frames: int = 10000):
+                 beta_frames: int = 10000, 
+                 model_type: str = "EGM"):
         
         self.action_mask = action_mask
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -33,9 +34,15 @@ class GameAgent:
             self.buffer = PERBufferSumTree(max_len=max_memory, alpha=0.6)
         else:
             raise ValueError(f"Invalid buffer type: {buffer_type}. Expected 'replay' or 'prioritized'.")
-        
-        self.model = EfficientGameModel(frame_stack, ac_dim).to(self.device)
-        self.target = EfficientGameModel(frame_stack, ac_dim).to(self.device)
+
+        if model_type == "EGM":
+            self.model = EfficientGameModel(frame_stack, ac_dim).to(self.device)
+            self.target = EfficientGameModel(frame_stack, ac_dim).to(self.device)
+        elif model_type == "GM":
+            self.model = GameModel(frame_stack, ac_dim).to(self.device)
+            self.target = GameModel(frame_stack, ac_dim).to(self.device)
+        else: 
+            raise ValueError("[ERROR] Invalid model type selected")
         
         self.opt = RMSprop(self.model.parameters(), lr=lr, alpha=0.95, eps=1e-2, centered=False)
         self.scheduler = CosineAnnealingLR(self.opt, scheduler_max, min_lr)
@@ -48,6 +55,7 @@ class GameAgent:
         self.beta_start = beta_start
         self.beta = self.beta_start
         self.beta_frames = beta_frames
+        self.model_type = model_type
         self.training_step = 0
 
         self.update_target_network(True)

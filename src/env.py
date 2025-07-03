@@ -53,7 +53,8 @@ class GameEnv():
                                  self.buffer_type,
                                  self.config["scheduler_max"],
                                  self.config["beta_start"], 
-                                 self.config["beta_frames"])
+                                 self.config["beta_frames"],
+                                 self.config["model_type"])
         
         if weights is not None: 
             logger.info(f"Loading pre-trained weights from: {weights}")
@@ -181,7 +182,7 @@ class GameEnv():
                     if self.verbose:
                         logger.info(f"Checkpoint saved at frame {total_frames}")  
                         
-                if total_frames % self.reset_freq == 0: 
+                if total_frames % self.reset_freq == 0 and self.agent.model_type == "EGM": 
                     self.agent.model.reset()
                     self.agent.update_target_network(hard_update=True)   
                             
