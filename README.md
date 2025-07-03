@@ -1,5 +1,7 @@
 # Efficient Deep Q-Learning for Sapce Invaders!
 
+<div align="center">
+
 <table>
   <tr>
     <td align="center">
@@ -12,6 +14,8 @@
     </td>
   </tr>
 </table>
+
+</div>
 
 ## Overview
 This repository is a resource-conscious reinforcement learning framework designed to train Deep Q-Network (DQN) agents for Atari games—specifically Space Invaders—on consumer-grade hardware. Traditional DQN implementations often demand millions of frames and substantial computational resources, placing them out of reach for individuals or small labs. This project explores architectural optimizations and training strategies that reduce compute and memory restrictions while retaining favorable performance.
