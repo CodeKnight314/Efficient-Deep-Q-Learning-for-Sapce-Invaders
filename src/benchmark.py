@@ -28,12 +28,12 @@ def run_benchmark(model_class, model_name, mode, values, fixed_params):
 
         with torch.no_grad():
             for _ in range(10):
-                model(dummy_input, normalize=True)
+                model(dummy_input)
 
         start = time.time()
         with torch.no_grad():
             for _ in range(200):
-                model(dummy_input, normalize=True)
+                model(dummy_input)
         end = time.time()
 
         avg_time = (end - start) / 20

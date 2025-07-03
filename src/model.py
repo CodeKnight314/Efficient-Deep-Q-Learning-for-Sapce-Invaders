@@ -157,14 +157,14 @@ if __name__ == "__main__":
     dummy_input = torch.randn(512, 4, 84, 84).to(DEVICE)
 
     for _ in range(10):
-        _ = model_a(dummy_input, normalize=True)
-        _ = model_b(dummy_input, normalize=True)
+        _ = model_a(dummy_input)
+        _ = model_b(dummy_input)
 
     def benchmark(model, inputs, runs=250):
         torch.cuda.synchronize()
         start = time.time()
         for _ in range(runs):
-            _ = model(inputs, normalize=True)
+            _ = model(inputs)
         torch.cuda.synchronize()
         end = time.time()
         return (end - start) / runs
