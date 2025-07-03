@@ -1,15 +1,49 @@
-# GamePlay.AI
-## Overview
-**GamePlay.AI** is a reinforcement learning framework focused on training **efficient Double Dueling DQN agents** for Atari games with **dense reward structures**, specifically under strict compute budgets. This project investigates how to **maximize performance per unit of compute**—whether GPU time, frames processed, or dollars spent.
+# Dollar Store Space Invader RL Agent!
 
-Rather than targeting long-horizon planning games like Tetris, GamePlay.AI prioritizes **reflex-based environments** such as Pong, Breakout, and Space Invaders, where fast learning and feedback loops enable meaningful evaluation under tight constraints. To tackle this, optimizatin design choices are used in models and computing constraint are enforced.
+<p align="center">
+  <img src="resources/videos/space_invaders_egm.gif" width="45%" title="Efficient D3QN Gameplay" />
+  <img src="resources/videos/space_invaders_gm.gif" width="45%" title="Standard D3QN Gameplay" />
+</p>
+
+
+## Overview
+"Dollar Store Space Invader RL Agent" is a resource-conscious reinforcement learning framework designed to train Deep Q-Network (DQN) agents for Atari games—specifically Space Invaders—on consumer-grade hardware. Traditional DQN implementations often demand millions of frames and substantial computational resources, placing them out of reach for individuals or small labs. This project explores architectural optimizations and training strategies that reduce compute and memory restrictions while retaining favorable performance.
 
 The framework includes:
 - A modular and lightweight training pipeline compatible with most Atari environments under `ALE-Py`,
-- Architecture optimizations (e.g., convolution factorization) for low FLOPs and memory use,
-- Frame-dollar efficiency metrics,
+- Architecture optimizations for low FLOPs and memory use,
 - A GUI runner for real-time performance demos and video recording,
 - Pretrained weights for games that have been efficiently "solved".
+
+## Method
+Typically, DQN models would be trained for tens of millions of frames which is feasible mainly for institutions and organizations with sufficient computing resources. Using consumer grade GPUs, the training time can often take days before a proper model could be trained. In face of this, this repository attempts to train modified DQN on a compute strict budget while accomplishing favorable performance. 
+
+Specifically, I leverage modifications of the CNN backbone and splitting the fully connected layers into value and action streams. In addition, I choose to skip 8 frames each step rather than 4, trading potential performance ceiling for more iterations. Finally, I reset the model's FC layers every $2\times 10^5$ transitions, in accordance with the paper on Primacy Bias, to mitgate overfitting on previous experiences.
+
+### Runtime Comparison
+The modified D3QN model is compared against standard D3QN model to demonstrate the efficiency gains from CNN modifications.
+
+<p align="center">
+  <img src="resources/graphs/inference_batch_size.png" height="50%" width="50%" title="Runtime vs batch size" />
+</p>
+
+The modifications from the CNN's backbone provide minor advantage in handling larger batches as seen from the comparison. The Efficient D3QN (EDQ3N) is able handle batch sizes of 256 roughly 31.47% faster than standard D3QN on same batches. This allowed EDQ3N to train on slightly more batches per iteration without significantly increasing computation time. Across comparison in resolution and number of stacked frmaes, EDQ3N demonstrate similar advantages but arguably, the benefits are not effective unless resolution goes beyond (84, 84) which is impractical.
+
+<p align="center">
+  <img src="resources/graphs/inference_num_frames.png" width="45%" title="Runtime vs batch size" />
+  <img src="resources/graphs/inference_resolution.png" width="45%" title="Runtime vs resolution" />
+</p>
+
+### Performance results
+<p align="center">
+  <img src="resources/graphs/d3qn_comparison.png" height="50%" width="50%" title="Episodic Reward Comparison"/>    
+</p>
+The modification to the DQN structure along with the layer reinitialization allowed ED3QN to reach higher performance ceiling in the same number of episodes. As a result, ED3QN was able to score more points than its counter part. As seen from the graph, despite periodically resetting the network's fully connected layers, ED3QN was able to reach higher performance ceiling in the same span of time. In comparison, D3QN remained stagnate and oscillated between 3 and 5 rewards per step. Comparing both models on 100 lives, ED3QN was able to score 57% more points than its counter part:
+<p align="center">
+  <img src="resources/graphs/d3qn_bar_chart.png" height="50%" width="50%" title="Episodic Reward Comparison"/>    
+</p>
+
+Given the time, financial, and computing constraints, I was not able to explore this further or train both models to convergence across the more standard 10M frames. However, ED3QN's episodic reward indicates it would've continued improving across episodes. In the future, I hope to expand on this repository to train the models longer and on a wider selection of games when I have more computing resources.
 
 ## Installation
 1. Clone the repository:
