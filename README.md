@@ -1,4 +1,4 @@
-# Efficient Deep Q-Learning for Sapce Invaders!
+# Towards Efficient Deep Q-Learning for Sapce Invaders!
 
 <div align="center">
 
