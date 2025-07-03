@@ -1,8 +1,14 @@
 # Efficient Deep Q-Learning for Sapce Invaders!
 
 <p align="center">
-  <img src="resources/videos/space_invaders_egm.gif" width="45%" title="Efficient D3QN Gameplay" />
-  <img src="resources/videos/space_invaders_gm.gif" width="45%" title="Standard D3QN Gameplay" />
+  <figure style="display:inline-block; margin: 0 10px; text-align: center;">
+    <img src="resources/videos/space_invaders_egm.gif" width="300" title="Efficient D3QN Gameplay" />
+    <figcaption>Efficient D3QN Gameplay</figcaption>
+  </figure>
+  <figure style="display:inline-block; margin: 0 10px; text-align: center;">
+    <img src="resources/videos/space_invaders_gm.gif" width="300" title="Standard D3QN Gameplay" />
+    <figcaption>Standard D3QN Gameplay</figcaption>
+  </figure>
 </p>
 
 ## Overview
@@ -17,7 +23,7 @@ The framework includes:
 ## Method
 Typically, DQN models would be trained for tens of millions of frames which is feasible mainly for institutions and organizations with sufficient computing resources. Using consumer grade GPUs, the training time can often take days before a proper model could be trained. In face of this, this repository attempts to train modified DQN on a compute strict budget while accomplishing favorable performance. 
 
-Specifically, I leverage modifications of the CNN backbone and splitting the fully connected layers into value and action streams. In addition, I choose to skip 8 frames each step rather than 4, trading potential performance ceiling for more iterations. Finally, I reset the model's FC layers every $2\times 10^5$ transitions, in accordance with the paper on Primacy Bias, to mitgate overfitting on previous experiences.
+Specifically, I leverage modifications of the CNN backbone and splitting the fully connected layers into value and action streams. In addition, I choose to skip 8 frames each step rather than 4, trading potential performance ceiling for more iterations. Finally, I reset the model's FC layers every $2\times 10^5$ transitions, in accordance with the paper on [Primacy Bias](https://proceedings.mlr.press/v162/nikishin22a/nikishin22a.pdf), to mitgate overfitting on previous experiences.
 
 ### Runtime Comparison
 The modified D3QN model is compared against standard D3QN model to demonstrate the efficiency gains from CNN modifications.
