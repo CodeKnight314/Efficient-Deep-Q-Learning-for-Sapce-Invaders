@@ -59,8 +59,8 @@ Given the time, financial, and computing constraints, I was not able to explore 
 ## Installation
 1. Clone the repository:
 ```bash
-git clone https://github.com/CodeKnight314/GamePlay.git
-cd GamePlay
+git clone https://github.com/CodeKnight314/Towards-Efficient-Deep-Q-Learning-for-Sapce-Invaders-.git
+cd Towards-Efficient-Deep-Q-Learning-for-Sapce-Invaders-
 ```
 
 2. Install required dependencies:
@@ -90,7 +90,7 @@ python3 -m src.main game --id <game> --c <config_path> --o <output_path> --mode 
 **Optional arguments:**
 - `--id`: Game choice (`pong`, `breakout`, `invaders`) - default: `pong`
 - `--seed`: Random seed for reproducibility - default: `1898`
-- `--num_envs`: Number of parallel environments - default: `1`
+- `--nenvs`: Number of parallel environments - default: `1`
 - `--w`: Path to initial weights file (for resume training)
 - `--verbose`: Enable rendering and detailed logs
 
@@ -114,12 +114,12 @@ python3 -m src.main game --id <game> --c <config_path> --o <output_path> --mode 
 **Optional arguments:**
 - `--id`: Game choice (`pong`, `breakout`, `invaders`) - default: `pong`
 - `--w`: Path to trained weights file (required for meaningful testing)
-- `--num_episodes`: Number of test episodes to run - default: `1`
+- `--neps`: Number of test episodes to run - default: `1`
 - `--verbose`: Enable rendering during test episodes
 
 **Example:**
 ```bash
-python3 -m src.main game --id pong --c src/config/pong.yaml --o test_results --mode test --w models/trained_pong.pth --num_episodes 10 --verbose
+python3 -m src.main game --id pong --c src/config/pong.yaml --o test_results --mode test --w models/trained_pong.pth --neps 100 --verbose
 ```
 
 ### GUI Mode
