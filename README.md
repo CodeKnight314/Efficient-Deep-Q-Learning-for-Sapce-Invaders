@@ -1,4 +1,4 @@
-# Towards Efficient Deep Q-Learning for Sapce Invaders!
+# Towards Efficient Deep Q-Learning for Space Invaders
 
 <div align="center">
 
@@ -59,7 +59,7 @@ Given the time, financial, and computing constraints, I was not able to explore 
 ## Installation
 1. Clone the repository:
 ```bash
-git clone https://github.com/CodeKnight314/Towards-Efficient-Deep-Q-Learning-for-Sapce-Invaders-.git
+git clone https://github.com/CodeKnight314/Towards-Efficient-Deep-Q-Learning-for-Space-Invaders-.git
 cd Towards-Efficient-Deep-Q-Learning-for-Sapce-Invaders-
 ```
 
